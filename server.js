@@ -1,10 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
+import { createClient } from '@supabase/supabase-js';
 import multer from 'multer';
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
+import { WebPDFLoader } from "@langchain/community/document_loaders/web/pdf";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { SupabaseVectorStore } from "@langchain/community/vectorstores/supabase";
@@ -19,29 +18,35 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configure Multer to intercept file uploads and keep them in volatile memory as raw binary buffers
+// 1. Configure Multer to retain uploaded files in server memory as binary buffers
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// Initialize Database Connection Pool to Supabase PostgreSQL
+// 2. Initialize the official Supabase API client wrapper for LangChain vector uploads
+const supabaseClient = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
+
+// 3. Initialize Database Connection Pool (for direct PostgreSQL management if needed)
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// Initialize our core Gemini models
+// 4. Initialize Gemini Core AI Models
 const embeddings = new GoogleGenerativeAIEmbeddings({ model: "gemini-embedding-001" });
 const llm = new ChatGoogleGenerativeAI({ model: "gemini-2.5-flash", temperature: 0 });
 
-// Construct the LangChain Supabase integration manager
+// 5. Construct the LangChain Supabase integration manager using our official client
 const vectorStore = new SupabaseVectorStore(embeddings, {
-  client: pool,
+  client: supabaseClient,
   tableName: "documents",
   queryName: "match_documents",
 });
 
 /**
- * ENDPOINT 1: DYNAMIC MULTIPART PDF UPLOAD AND SEEDING
- * Accepts an actual file upload, extracts text chunks, embeds them, and persists them to Supabase pgvector.
+ *  ENDPOINT 1: DYNAMIC MULTIPART PDF UPLOAD AND SEEDING
+ * Accepts file upload, extracts text chunks via WebPDFLoader, embeds them, and persists to Supabase.
  */
 app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
@@ -51,30 +56,32 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
     console.log(`Received binary PDF upload: ${req.file.originalname}`);
 
-    // 1. Parse raw text content directly out of the binary memory buffer
-    const pdfData = await pdfParse(req.file.buffer);
-    const rawText = pdfData.text;
-
-    if (!rawText || rawText.trim().length === 0) {
-      return res.status(400).json({ success: false, error: "Could not extract readable text strings from this PDF." });
-    }
-
-    console.log(`Successfully parsed ${pdfData.numpages} pages. Slicing into text chunks...`);
-
-    // 2. Chunk the text logically using optimized hyperparameters
-    const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 600, chunkOverlap: 120 });
+    // Convert raw memory buffer into a standard Web Blob structure
+    const blob = new Blob([req.file.buffer], { type: "application/pdf" });
+    const loader = new WebPDFLoader(blob);
     
-    // Create base Document objects using LangChain standards, injecting file metadata
-    const docs = await splitter.createDocuments(
-      [rawText], 
-      [{ source_file: req.file.originalname, total_pages: pdfData.numpages }]
-    );
+    // Load pages into explicit LangChain Document fragments
+    const rawDocs = await loader.load();
+    console.log(`Successfully parsed ${rawDocs.length} pages via native WebPDFLoader.`);
 
-    console.log(`Generated ${docs.length} semantic vectors. Bulk inserting into Supabase via pgvector...`);
+    // Slicing text cleanly into structural chunks
+    const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 600, chunkOverlap: 120 });
+    const splitDocs = await splitter.splitDocuments(rawDocs);
+    
+    // Explicitly map structural file metadata headers to every row entry
+    const finalizedDocs = splitDocs.map(doc => {
+      doc.metadata = {
+        ...doc.metadata,
+        source_file: req.file.originalname
+      };
+      return doc;
+    });
 
-    // 3. Perform automated mass-vectorization and SQL database population
-    await SupabaseVectorStore.fromDocuments(docs, embeddings, {
-      client: pool,
+    console.log(`Generated ${finalizedDocs.length} semantic vectors. Syncing to Supabase via pgvector...`);
+
+    // Bulk upload matching vectors and document mappings over HTTPS gateway
+    await SupabaseVectorStore.fromDocuments(finalizedDocs, embeddings, {
+      client: supabaseClient,
       tableName: "documents",
     });
 
@@ -82,8 +89,8 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       success: true,
       message: "PDF Ingestion Engine successfully synchronized data with Supabase.",
       filename: req.file.originalname,
-      chunks_created: docs.length,
-      pages_parsed: pdfData.numpages
+      chunks_created: finalizedDocs.length,
+      pages_parsed: rawDocs.length
     });
 
   } catch (error) {
@@ -94,7 +101,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
 /**
  * ENDPOINT 2: CHAT & CONTEXTUAL RETRIEVAL
- * Takes a user query, searches Supabase via vector math, injects context, and queries Gemini.
+ * Vector search query processing endpoint matching criteria back to context arrays.
  */
 app.post('/api/chat', async (req, res) => {
   const { question } = req.body;
@@ -127,7 +134,7 @@ app.post('/api/chat', async (req, res) => {
       new StringOutputParser(),
     ]);
 
-    // Fetch documents independently to extract text citations and pass them to our client frontend interface
+    // Fetch documents to parse context citations out to the UI layout
     const sourceDocuments = await retriever.invoke(question);
     const aiAnswer = await ragChain.invoke(question);
 
@@ -146,4 +153,4 @@ app.post('/api/chat', async (req, res) => {
 });
 
 const PORT = 5000;
-app.listen(PORT, () => console.log(`🚀 AI RAG Production API Layer listening on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`AI RAG Production API Layer listening on http://localhost:${PORT}`));
