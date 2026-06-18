@@ -1,10 +1,23 @@
-# Local Environment Secrets
+# Local Environment Variables (Crucial to never commit!)
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Dependencies
+# Dependency Folders (From both root, backend, and frontend)
 node_modules/
-dist/
+backend/node_modules/
+frontend/node_modules/
 
-# Operating System garbage files
+# Production Build Artifacts
+dist/
+frontend/dist/
+backend/dist/
+
+# System / IDE Files
 .DS_Store
-Thumbs.db
+.vscode/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
