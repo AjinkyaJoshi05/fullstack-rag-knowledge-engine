@@ -72,7 +72,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const finalizedDocs = splitDocs.map(doc => {
       doc.metadata = {
         ...doc.metadata,
-        source_file: req.file.originalname
+        source: req.file.originalname
       };
       return doc;
     });
@@ -104,17 +104,38 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
  * Vector search query processing endpoint matching criteria back to context arrays.
  */
 app.post('/api/chat', async (req, res) => {
-  const { question } = req.body;
+  const { question , currentFilename} = req.body;
   if (!question) return res.status(400).json({ error: "Question parameter is required" });
+  if (!currentFilename) {
+    return res.json({ 
+      answer: "Please upload a technical PDF specifications file into the Knowledge Core drop-zone on the left before running search sequences.",
+      citations: [] 
+    });
+  }
 
   try {
-    const retriever = vectorStore.asRetriever({ searchType: "similarity", k: 3 });
+    // 2. Define search configuration parameters
+    const searchOptions = {
+      searchType: "similarity",
+      k: 3,
+    };
+
+    // 3. Dynamic filter: If a filename is passed, restrict the vector space strictly to it
+    if (currentFilename) {
+      searchOptions.filter = { source: currentFilename };
+    }
+    const retriever = vectorStore.asRetriever(searchOptions);
     
     const prompt = ChatPromptTemplate.fromTemplate(`
-      You are a professional full-stack knowledge assistant. Answer the user query using ONLY the technical data provided inside the text context blocks below. 
-      If the solution cannot be derived from the context data explicitly, state clearly that the document information is insufficient to formulate an answer. Do not hallucinate.
+      You are an expert full-stack knowledge assistant and technical consultant. Your goal is to analyze, summarize, or answer questions about the provided document context.
 
-      Context Blocks:
+      Guidelines:
+      1. Base your insights, answers, and summaries directly on the provided Technical Context Blocks.
+      2. If the user asks for a summary, synthesize the context into a clean, professional overview.
+      3. If the user asks for improvements, critiques, or suggestions, analyze the context data and use your technical expertise to provide constructive recommendations.
+      4. If a question asks for explicit facts that are completely missing from the document, state clearly that the document information is insufficient. Do not invent entirely fabricated facts.
+
+      Technical Context Blocks:
       {context}
 
       User Question: {question}
@@ -148,6 +169,12 @@ app.post('/api/chat', async (req, res) => {
 
   } catch (error) {
     console.error("Retrieval Engine Failure:", error);
+    if (error.status === 429 || error.message?.includes('429')) {
+      return res.status(200).json({ // Return 200 so the frontend parses the clean message state safely
+        answer: "**API Quota Reached:** This engine's global Gemini free-tier daily usage limit (20 requests/day) has been reached. Please wait a bit or test with an updated API token wrapper.",
+        citations: []
+      });
+    }
     return res.status(500).json({ error: error.message });
   }
 });

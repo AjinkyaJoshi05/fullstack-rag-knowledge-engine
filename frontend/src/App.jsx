@@ -58,7 +58,10 @@ export default function App() {
       const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: inputQuestion }),
+        body: JSON.stringify({ 
+          question: inputQuestion,
+          currentFilename: file ? file.name : null // <-- Send the currently loaded filename
+        }),
       });
       const data = await res.json();
 
@@ -85,7 +88,7 @@ export default function App() {
       <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="text-indigo-400 w-6 h-6 animate-pulse" />
-          <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
+          <h1 className="text-xl font-bold tracking-tight bg-gradient-to-red from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
             Enterprise RAG Knowledge Engine
           </h1>
         </div>
