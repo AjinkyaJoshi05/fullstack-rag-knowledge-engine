@@ -31,7 +31,7 @@ A decoupled, production-ready Full-Stack **Retrieval-Augmented Generation (RAG)*
 flowchart TD
     subgraph Ingestion_Pipeline [Data Ingestion Pipeline]
         A[Upload PDF] --> B[Express Backend]
-        B --> C["LangChain Splitter (600 Chunks / 120 Overlap)"]
+        B --> C["LangChain Splitter (600 Chunks / 20% Overlap)"]
         C --> D[Gemini Embedding API]
         D --> E[("Supabase (pgvector)")]
     end
