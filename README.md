@@ -22,6 +22,7 @@ A decoupled, production-ready Full-Stack **Retrieval-Augmented Generation (RAG)*
 * **Database & Vector Store:** PostgreSQL + Supabase (`pgvector`)
 * **AI Model Engine:** Gemini API (Text Embeddings & Generation)
 * **Deployment:** Vercel (Frontend), Render (Backend)
+* **DevOps:** Docker, GitHub Actions, GitHub Container Registry (GHCR), Kubernetes
 
 ---
 
@@ -31,7 +32,7 @@ A decoupled, production-ready Full-Stack **Retrieval-Augmented Generation (RAG)*
 flowchart TD
     subgraph Ingestion_Pipeline [Data Ingestion Pipeline]
         A[Upload PDF] --> B[Express Backend]
-        B --> C["LangChain Splitter (600 Chunks / 20% Overlap)"]
+        B --> C["LangChain Splitter (600 Characters / 20% Overlap)"]
         C --> D[Gemini Embedding API]
         D --> E[("Supabase (pgvector)")]
     end
@@ -51,8 +52,8 @@ flowchart TD
 
 ### 1. Clone the Repository
 ```bash
-git clone [https://github.com/AjinkyaJoshi05/your-repo-name.git](https://github.com/AjinkyaJoshi05/your-repo-name.git)
-cd your-repo-name
+git clone git clone https://github.com/AjinkyaJoshi05/fullstack-rag-knowledge-engine.git
+cd fullstack-rag-knowledge-engine
 ```
 ### 2. Environment Variables Configuration
 
@@ -69,7 +70,7 @@ Create a `.env` file in your frontend directory:
 VITE_API_BASE_URL=http://localhost:5000/api
 ```
 
-### 2. Insatll and run
+### 3. Install and run
 ## Navigate to the backend directory, install dependencies, and start backend
 ```
 cd backend
@@ -83,6 +84,76 @@ npm install
 npm run dev
 ```
 
+---
+
+##  DevOps & Containerization
+
+- **Docker:** Containerized the Node.js backend with a production-oriented Alpine-based image.
+- **Health Checks:** Docker `HEALTHCHECK` monitors the `/health` endpoint to verify container availability.
+- **CI/CD:** GitHub Actions automatically installs dependencies, builds the Docker image, starts the container, validates container health, and tests the `/health` endpoint on pushes and pull requests.
+- **Container Registry:** Successful CI runs publish the Docker image to GitHub Container Registry (GHCR).
+- **Kubernetes:** Added Kubernetes Deployment and NodePort Service configurations for container orchestration and local cluster deployment.
+
+### Docker
+
+Build and run the backend container locally:
+
+```bash
+cd backend
+docker build -t rag-backend .
+docker run -d \
+  --name rag-backend \
+  -p 5000:5000 \
+  -e SUPABASE_URL=your_supabase_url \
+  -e SUPABASE_ANON_KEY=your_supabase_key \
+  -e GOOGLE_API_KEY=your_google_api_key \
+  rag-backend
+```
+
+Verify the health endpoint:
+```bash
+curl http://localhost:5000/health
+```
+
+### CI Pipeline
+
+The GitHub Actions workflow performs:
+
+```mermaid
+flowchart TD
+    Install("Install Dependencies")
+    Build("Build Docker Image")
+    Start("Start Container")
+    CHCheck("Container Health Check")
+    APIHCheck("API Health Test")
+    Publish("Publish Image to GHCR")
+
+    Install --> Build
+    Build --> Start
+    Start --> CHCheck
+    CHCheck --> APIHCheck
+    APIHCheck --> Publish
+```
+
+### Kubernetes
+
+Kubernetes manifests are available in backend/k8s/.
+
+```bash
+kubectl apply -f backend/k8s/
+kubectl get pods
+kubectl get services
+```
+
+The backend can be exposed locally using:
+```bash
+kubectl port-forward service/rag-backend-service 5000:5000
+```
+
+Then Verify
+```bash
+curl http://localhost:5000/health
+```
 ---
 
 ##  Production Security Implementations
