@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-backend
+  template:
+    metadata:
+      labels:
+        app: rag-backend
+    spec:
+      containers:
+        - name: rag-backend
+          image: rag-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          env:
+            - name: SUPABASE_URL
+              value: "https://example.supabase.co"
+            - name: SUPABASE_ANON_KEY
+              value: "ci-dummy-key"
+            - name: GOOGLE_API_KEY
+              value: "ci-dummy-key"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 20

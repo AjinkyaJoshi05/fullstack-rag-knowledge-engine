@@ -1,0 +1,90 @@
+name: RAG Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - devops-setup
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Docker image
+        run: docker build -t rag-backend ./backend
+
+      - name: Start Docker container
+        run: |
+          docker run -d \
+            --name rag-backend-test \
+            -p 5000:5000 \
+            -e SUPABASE_URL=https://example.supabase.co \
+            -e SUPABASE_ANON_KEY=ci-dummy-key \
+            -e GOOGLE_API_KEY=ci-dummy-key \
+            rag-backend
+
+      - name: Wait for container health
+        run: |
+          for i in {1..12}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' rag-backend-test)
+
+            echo "Container health: $STATUS"
+
+            if [ "$STATUS" = "healthy" ]; then
+              exit 0
+            fi
+
+            if [ "$STATUS" = "unhealthy" ]; then
+              docker logs rag-backend-test
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          docker logs rag-backend-test
+          exit 1
+
+      - name: Test health endpoint
+        run: curl --fail http://localhost:5000/health
+      
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker image to GHCR
+        run: |
+          IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/rag-backend
+          IMAGE_NAME=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+
+          docker tag rag-backend:latest $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:latest
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f rag-backend-test
