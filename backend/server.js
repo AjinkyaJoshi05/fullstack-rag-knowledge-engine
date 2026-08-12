@@ -179,5 +179,12 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'rag-backend'
+  });
+});
+
 const PORT = 5000;
 app.listen(PORT, () => console.log(`AI RAG Production API Layer listening on http://localhost:${PORT}`));

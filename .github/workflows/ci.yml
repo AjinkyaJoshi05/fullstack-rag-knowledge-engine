@@ -30,3 +30,39 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t rag-backend ./backend
+
+      - name: Start Docker container
+        run: |
+          docker run -d \
+            --name rag-backend-test \
+            -p 5000:5000 \
+            rag-backend
+
+      - name: Wait for container health
+        run: |
+          for i in {1..12}; do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' rag-backend-test)
+
+            echo "Container health: $STATUS"
+
+            if [ "$STATUS" = "healthy" ]; then
+              exit 0
+            fi
+
+            if [ "$STATUS" = "unhealthy" ]; then
+              docker logs rag-backend-test
+              exit 1
+            fi
+
+            sleep 5
+          done
+
+          docker logs rag-backend-test
+          exit 1
+
+      - name: Test health endpoint
+        run: curl --fail http://localhost:5000/health
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f rag-backend-test
