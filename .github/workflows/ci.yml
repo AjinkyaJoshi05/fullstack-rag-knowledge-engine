@@ -36,6 +36,9 @@ jobs:
           docker run -d \
             --name rag-backend-test \
             -p 5000:5000 \
+            -e SUPABASE_URL=https://example.supabase.co \
+            -e SUPABASE_ANON_KEY=ci-dummy-key \
+            -e GOOGLE_API_KEY=ci-dummy-key \
             rag-backend
 
       - name: Wait for container health
