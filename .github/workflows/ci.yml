@@ -1,0 +1,32 @@
+name: RAG Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - devops-setup
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci --legacy-peer-deps
+
+      - name: Build Docker image
+        run: docker build -t rag-backend ./backend
